@@ -3,6 +3,7 @@
 """
 用来向量化文本的组件，按照config，加载本地的huggingface权重并进行推理
 """
+import json
 import os
 import logging
 import requests
@@ -10,8 +11,9 @@ from sentence_transformers import SentenceTransformer
 from typing import Any, Dict, List
 from pathlib import Path
 
-MODEL_BASE_PATH = Path(__file__).resolve().parents[1] / 'lintao' / "models"
-HF_TOKEN = "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"
+MODEL_BASE_PATH = Path(__file__).resolve().parents[1] / 'user_data' / 'lintao' / "models"
+CONFIG_DICT = json.load(open(MODEL_BASE_PATH / 'config' / "llm_config.json", "r"))
+HF_TOKEN = CONFIG_DICT.get('HUGGINGFACE_CONFIG', {}).get('HF_TOKEN', None)
 HF_EMBEDDING_MULTIMINILM = {
     # https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     "headers": {"Authorization": f"Bearer {HF_TOKEN}"},
