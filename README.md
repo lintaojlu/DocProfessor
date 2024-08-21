@@ -1,67 +1,50 @@
 # DocProfessor
 
 ## Description
-**DocProfessor** is an intelligent document processing system designed to classify, summarize, and interact with documents using advanced language models. The system integrates knowledge retrieval, classification, and summarization functionalities to provide comprehensive insights into document content.
+DocProfessor is an intelligent assistant application designed to help users interact with and manage their document collections. It integrates a knowledge retrieval system and a user interface built with Gradio, providing functionalities such as document classification, summarization, and intelligent responses to user queries.
 
 ## Installation
 To install and set up DocProfessor, follow these steps:
 
 1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd doc_professor
-   ```
+    ```sh
+    git clone <repository_url>
+    cd doc_professor
+    ```
 
-2. **Set up a virtual environment:**
-   ```bash
-   python3 -m venv env
-   source env/bin/activate
-   ```
+2. **Create and activate a virtual environment (optional but recommended):**
+    ```sh
+    python -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
 
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Download necessary models and data:**
-   - Ensure you have the required models in the `user_data/lintao/models` directory. If not, download them using the provided scripts or manually.
+3. **Install the required dependencies:**
+    ```sh
+    pip install -r requirements.txt
+    ```
 
 ## Output
-The expected output includes categorized documents, summaries in Markdown format, and interactive chatbot responses. The data formats are usually plain text, JSON, and Markdown.
+The expected output of the project includes:
+- **Related knowledge** retrieved from a local knowledge base.
+- **Generated responses** from the GPT-4 model displayed in a chatbot interface.
+- **Classified documents** with associated categories and keywords.
+- **Document summaries** in Markdown format.
 
 ## Usage
-### Example: Classify and Summarize a Document
-```python
-from doc_professor import DocProfessor
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
-
-docc = DocProfessor(user_dir='user_data/lintao/', model='gpt-4o-2024-05-13')
-docc.load_categories_map()
-
-doc_path = 'user_data/lintao/data/研究论文/Carisimo 等 - 2023 - A Hop Away from Everywhere A View of the Intercon.pdf'
-doc_content = get_doc_content(doc_path)
-
-classify_result = docc.classify_doc(doc_content[:1000])
-category, keywords = docc.get_category_and_keywords(classify_result)
-
-new_doc_path = docc.get_new_doc_path_based_on_category(doc_path, category[0])
-docc.move_doc(doc_path, new_doc_path)
-
-summary_path = docc.get_summary_path_based_on_category(doc_path, category[0])
-summary = docc.summarize_doc(doc_content)
-docc.dump_content_to_file(summary, summary_path)
+### Running the Gradio Interface
+To start the Gradio interface, run the following command:
+```sh
+python web_test.py
 ```
+This will launch a web interface where you can input queries and interact with the assistant.
 
-### Example: Interactive Chatbot
+### Example Code Snippets
+#### Generating a Response
 ```python
 from doc_chat import DocChat
 from pathlib import Path
-from utils.embedding import LocalEmbedding
-from knowledge import KnowledgeRetrieval
 
-user_dir = Path(__file__).resolve().parents[0] / 'lintao'
+user_dir = Path('user_data/lintao')
 embedding_model = LocalEmbedding()
 knowledge_db_path = user_dir / "database/knowledge_db.pkl"
 vector_db_path = user_dir / "database/vector_db.pkl"
@@ -72,30 +55,44 @@ response = doc_chat.generate_response("What is the Hop in traceroute")
 print("Response:", response)
 ```
 
+### Document Classification and Summarization
+```python
+from doc_professor import DocProfessor
+from utils.utils import get_doc_content
+
+docc = DocProfessor(user_dir='user_data/lintao/', model='gpt-4o-2024-05-13')
+docc.load_categories_map()
+doc_path = 'user_data/lintao/data/研究论文/Carisimo 等 - 2023 - A Hop Away from Everywhere A View of the Intercon.pdf'
+doc_content = get_doc_content(doc_path)
+
+classify_result = docc.classify_doc(doc_content[:1000])
+category, keywords = docc.get_category_and_keywords(classify_result)
+summary = docc.summarize_doc(doc_content)
+docc.dump_content_to_file(summary, docc.get_summary_path_based_on_category(doc_path, category[0]))
+```
+
 ## Configuration
 ### Environment Variables
-- `HF_TOKEN`: Hugging Face API token for embedding models.
+- `OPENAI_API_KEY`: Your OpenAI API key.
+- `HF_TOKEN`: Your Hugging Face API token.
 
 ### Configuration Files
-- `category_map.json`: Maps document categories to keywords.
-- `llm_config.json`: Configuration for language models.
+- `llm_config.json`: Contains settings for language models and API keys.
+- `category_map.json`: Defines categories and keywords for document classification.
 
 ## Contributing
 ### Guidelines
-1. Fork the repository and create a new branch for your feature or bugfix.
-2. Ensure your code adheres to the existing coding standards and passes all tests.
-3. Submit a pull request with a detailed description of your changes.
+1. **Fork the repository** and create your branch from `main`.
+2. **Ensure your code adheres to the coding standards** and includes appropriate tests.
+3. **Submit a pull request** with a clear description of your changes and the problem they solve.
 
 ### Coding Standards
-- Follow PEP 8 for Python code.
-- Write clear and concise commit messages.
-- Include docstrings for all functions and classes.
+- Follow PEP 8 guidelines for Python code.
+- Write meaningful commit messages.
+- Include docstrings and type annotations.
 
 ## License
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License. See the LICENSE file for more details.
 
 ## Contact Information
-For support or inquiries, please contact:
-- **Lintao**: lint22@mails.tsinghua.edu.cn
-
-Thank you for using DocProfessor!
+For support or inquiries, please contact Lintao at <email@example.com>.
