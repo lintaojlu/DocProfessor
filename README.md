@@ -40,8 +40,9 @@ This will launch a web interface where you can input queries and interact with t
 
 ### Example Code Snippets
 #### Generating a Response
+
 ```python
-from doc_chat import DocChat
+from doc_chat import DocAssistant
 from pathlib import Path
 
 user_dir = Path('user_data/lintao')
@@ -49,13 +50,14 @@ embedding_model = LocalEmbedding()
 knowledge_db_path = user_dir / "database/knowledge_db.pkl"
 vector_db_path = user_dir / "database/vector_db.pkl"
 knowledge_retrieval = KnowledgeRetrieval(embedding_model, knowledge_db_path, vector_db_path)
-doc_chat = DocChat(model='gpt-4o-2024-05-13', user_root_path=user_dir, knowledge_retrieval=knowledge_retrieval)
+doc_chat = DocAssistant(model='gpt-4o-2024-05-13', user_dir=user_dir, knowledge_retrieval=knowledge_retrieval)
 
 response = doc_chat.generate_response("What is the Hop in traceroute")
 print("Response:", response)
 ```
 
 ### Document Classification and Summarization
+
 ```python
 from doc_professor import DocProfessor
 from utils.utils import get_doc_content
