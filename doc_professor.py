@@ -2,8 +2,12 @@
 import json
 import logging
 import os
+
+from doc_chat import DocAssistant
+from doc_study import DocStudy
 from utils.llm_api import get_model_answer
-from utils.utils import get_doc_content
+from utils.utils import get_doc_content, get_files_in_directory, move_doc, dump_content_to_file
+from doc_resolver import DocResolver
 
 
 class DocProfessor:
@@ -11,19 +15,63 @@ class DocProfessor:
         self.model = model
         self.user_dir = user_dir
         self.user_doc_dir = self.user_dir + 'data/'
+        self.user_temp_dir = self.user_dir + 'temp/'
         self.categories_map_path = self.user_dir + 'config/category_map.json'
         self.categories_map = None
+        self.documents_local = []
+        # e.g. {'doc_path': 'status'}
+        self.documents_to_be_resolved = {}
         logging.info(f'DOC_CLASSIFIER use model:{self.model}')
+
+        # initialize
+        os.makedirs(self.user_doc_dir, exist_ok=True)
+        os.makedirs(self.user_temp_dir, exist_ok=True)
+        self.documents_local = self.get_all_document_paths()
+        # the main modules
+        self.resolver = DocResolver(user_dir=self.user_dir, model=self.model)
+        self.learner = DocStudy(tokenizer_dir=self.user_dir + 'models/nltk_data',
+                                knowledge_db_path=self.user_dir + 'database/knowledge_db.pkl',
+                                vector_db_path=self.user_dir + 'database/vector_db.pkl')
+        self.knowledge_retrieval = self.learner.knowledge_retrieval
+        self.assistant = DocAssistant(model=self.model, user_dir=self.user_dir,
+                                      knowledge_retrieval=self.knowledge_retrieval)
+
+    def get_all_document_paths(self):
+        self.documents_local = get_files_in_directory(self.user_doc_dir)
+        return self.documents_local
 
     def load_categories_map(self):
         with open(self.categories_map_path, 'r') as f:
             self.categories_map = json.load(f)
 
-    def set_categories_map(self, categories_map):
-        self.categories_map = categories_map
-
     def get_categories_map(self):
         return self.categories_map
+
+    def add_candidate_category(self, category, description=''):
+        self.categories_map['candidate_category'].append({category: description})
+        self.save_categories_map()
+
+    def add_candidate_keyword(self, keyword, description=''):
+        self.categories_map['candidate_keyword'].append({keyword: description})
+        self.save_categories_map()
+
+    def update_candidate_category_desc(self, category, description):
+        self.categories_map['candidate_category'][category] = description
+        self.save_categories_map()
+
+    def update_candidate_keyword_desc(self, keyword, description):
+        self.categories_map['candidate_keyword'][keyword] = description
+        self.save_categories_map()
+
+    def update_keywords(self, keywords: dict):
+        for keyword, description in keywords.items():
+            self.categories_map['candidate_keyword'][keyword] = description
+        self.save_categories_map()
+
+    def update_categories(self, categories: dict):
+        for category, description in categories.items():
+            self.categories_map['candidate_category'][category] = description
+        self.save_categories_map()
 
     def get_candidate_category(self):
         try:
@@ -39,21 +87,10 @@ class DocProfessor:
             candidate_keyword = []
         return candidate_keyword
 
-    def add_candidate_category(self, category, description=''):
-        self.categories_map['candidate_category'].append({category: description})
-        self.save_categories_map()
-
-    def add_candidate_keyword(self, keyword, description=''):
-        self.categories_map['candidate_keyword'].append({keyword: description})
-        self.save_categories_map()
-
-    def update_candidate_category(self, category, description):
-        self.categories_map['candidate_category'][category] = description
-        self.save_categories_map()
-
     def save_categories_map(self):
         with open(self.categories_map_path, 'w') as f:
-            json.dump(self.categories_map, f)
+            # why the Chines characters are not displayed correctly? The reason is that the default encoding is ASCII. How to solve it? Add ensure_ascii=False
+            json.dump(self.categories_map, f, ensure_ascii=False, indent=4)
             logging.debug(f"Save categories map to {self.categories_map_path}")
 
     def make_dirs_based_on_categories(self):
@@ -73,112 +110,115 @@ class DocProfessor:
                 raise Exception("Wrong Json Format")
         except Exception as e:
             logging.debug(f"解析回答时出错：{e}, {content}")
-            dict_response = {'title': '解析回答时出错', 'candidate_category': [], 'candidate_keyword': []}
+            dict_response = None
         return dict_response
 
-    def classify_doc(self, doc_content):
-        sys_instruction = (
-                'Classify documents and give documents keywords based on given categories and keywords, provide correlation scores, reasons and original text. '
-                'If the document does not fit any category, classify it as "其他".'
-                'Create new keywords if the document does not fit any existing keywords. '
-                'Score ranges from 60 to 100.'
-                'You prioritizes clarity and accuracy, focusing on the abstract and the title of the document. '
-                'The output should be a markdown code snippet formatted in JSON, such as '
-                '```json {"title": "Cross-layer diagnosis of optical backbone failures", '
-                '"candidate_category": [{"category": "研究论文", "score": 95, "reason": "这是一篇关于网络诊断的文章，张颖等人详细介绍了在光学主干网络中进行故障诊断的研究和系统"}], '
-                '"candidate_keyword": [{"keyword": "Optical Network", "score": 95, "reason": "文章详细讨论了光学主干网络的结构、故障特性以及诊断方法", "original_text": "Optical backbone networks, the physical infrastructure inter-connecting data centers, are the cornerstones of Wide-Area Network (WAN) connectivity and resilience."}]} ```. '
-                '用中文回答。'
-                'The categories are as follows: ' +
-                f'{self.categories_map}')
-        prompt = [{"role": "system", "content": sys_instruction}, {"role": "user", "content": doc_content}]
-        logging.debug(f'prompt: {prompt}')
-        answer = get_model_answer(model_name=self.model, inputs_list=prompt, user_dir=self.user_dir)
-        logging.debug(f'answer: {answer}')
-        answer_dict = self.parse_response_json(answer)
-        return answer_dict
+    def resolve_docs(self):
+        logging.info("Start to resolve all documents")
+        for doc_path, status in self.documents_to_be_resolved.items():
+            # if status is 1, means the document has been resolved
+            if status == 1:
+                continue
+            try:
+                # 读取文档
+                doc_content = get_doc_content(doc_path)
+            except Exception as e:
+                logging.error(f"Error when read doc: {doc_path}, {e}")
 
-    def get_category_and_keywords(self, answer_dict):
-        candidate_category = answer_dict.get('candidate_category', [])
-        candidate_keyword = answer_dict.get('candidate_keyword', [])
-        category = []
-        for item in candidate_category:
-            category.append(item['category'])
-        kewords = []
-        for item in candidate_keyword:
-            kewords.append(item['keyword'])
-        if not category:
-            category = ['others']
-        return category, kewords
+            try:
+                # 解析文档
+                # example format:
+                # {"title": "",
+                # "candidate_category": [{"category": "研究论文", "score": 95, "reason": ""}],
+                # "candidate_keyword": [{"keyword": "k1", "score": 95, "reason": "", "original_text": ""}]}
+                categories_and_keywords = self.resolver.classify_doc(doc_content)
+                if not categories_and_keywords:
+                    raise Exception("Resolve doc failed: No category or keyword found")
 
-    def summarize_doc(self, doc_content):
-        """此GPT旨在高效总结文档内容，重点是以Markdown格式提供简明摘要。它将提取并包含标题、基本信息（如作者、出版日期、来源和用途）、摘要以及导读，导读应当分点阐述各个部分的主要内容、观点等。目标是在保留原始上下文的同时，去除不必要的细节，确保关键信息得到清晰呈现。交流风格将是正式的，优先考虑清晰度和专业性。最后，输出以中文为主。"""
-        sys_instruction = (
-            '你是文档总结助手，任务是高效总结文档内容，重点是以Markdown格式提供简明摘要。'
-            '你将提取并包含标题、基本信息（如作者、出版日期、来源和用途）、摘要以及导读，导读应当分点阐述各个部分的主要内容、观点等。目标是在保留原始上下文的同时，去除不必要的细节，确保关键信息得到清晰呈现。交流风格将是正式的，优先考虑清晰度和专业性。'
-            '最后，回答以中文为主。')
-        prompt = [{"role": "system", "content": sys_instruction}, {"role": "user", "content": doc_content}]
-        logging.debug(f'prompt: {prompt}')
-        answer = get_model_answer(model_name=self.model, inputs_list=prompt, user_dir=self.user_dir)
-        logging.debug(f'answer: {answer}')
-        return answer
+                # 进行文档分类和关键词提取
+                categories, keywords = self.resolver.get_category_and_keywords(categories_and_keywords)
+
+                # 生成文档摘要
+                summary = self.resolver.summarize_doc(doc_content)
+            except Exception as e:
+                logging.error(f"Error when resolve doc: {doc_path}, {e}")
+                continue
+
+            # 更新分类和关键词
+            # TODO categories和keywords都是list，需要获得的是dict
+            categories_dict = {category: '' for category in categories}
+            keywords_dict = {keyword: '' for keyword in keywords}
+            self.update_categories(categories_dict)
+            self.update_keywords(keywords_dict)
+
+            # 移动文档到新的目录
+            new_doc_path = self.get_new_doc_path_based_on_category(doc_path, categories[0])
+            move_doc(doc_path, new_doc_path)
+
+            # 保存文档解析信息
+            new_doc_info_path = self.get_new_doc_info_path_based_on_category(doc_path, categories[0])
+            with open(new_doc_info_path, 'w') as f:
+                json.dump(categories_and_keywords, f, ensure_ascii=False, indent=4)
+
+            # 获取新的摘要路径
+            summary_path = self.get_summary_path_based_on_category(doc_path, categories[0])
+            dump_content_to_file(summary, summary_path)
+
+            # 学习文档
+            self.learner.study_doc(doc_content)
+
+            # 文档解析完毕
+            self.documents_to_be_resolved[doc_path] = 1
+        logging.info("Finish resolve all documents")
+        return self.documents_to_be_resolved
+
+
 
     def get_new_doc_path_based_on_category(self, doc_path, category):
-        doc_name = os.path.basename(doc_path)
-        new_doc_dir = os.path.join(self.user_doc_dir, category)
-        if not os.path.exists(new_doc_dir):
-            os.makedirs(new_doc_dir)
-        new_doc_path = os.path.join(new_doc_dir, doc_name)
-        return new_doc_path
+        try:
+            doc_name = os.path.basename(doc_path)
+            new_doc_dir = os.path.join(self.user_doc_dir, category)
+            if not os.path.exists(new_doc_dir):
+                os.makedirs(new_doc_dir)
+            new_doc_path = os.path.join(new_doc_dir, doc_name)
+            return new_doc_path
+        except Exception as e:
+            logging.error(f"Error when get new doc path: {doc_path}, {e}")
+
+    def get_new_doc_info_path_based_on_category(self, doc_path, category):
+        try:
+            doc_name = os.path.basename(doc_path)
+            doc_info_name = doc_name + '.json'
+            doc_info_dir = os.path.join(self.user_doc_dir, category)
+            if not os.path.exists(doc_info_dir):
+                os.makedirs(doc_info_dir)
+            doc_info_path = os.path.join(doc_info_dir, doc_info_name)
+            return doc_info_path
+        except Exception as e:
+            logging.error(f"Error when get new doc info path: {doc_path}, {e}")
 
     def get_summary_path_based_on_category(self, doc_path, category):
-        doc_name = os.path.basename(doc_path)
-        summary_name = doc_name + '.md'
-        summary_dir = os.path.join(self.user_doc_dir, category)
-        if not os.path.exists(summary_dir):
-            os.makedirs(summary_dir)
-        summary_path = os.path.join(summary_dir, summary_name)
-        return summary_path
-
-    def move_doc(self, doc_path, new_doc_path):
-        os.rename(doc_path, new_doc_path)
-        logging.info(f"Document has been moved to {new_doc_path}")
-
-    def dump_content_to_file(self, answer, output_path):
-        with open(output_path, 'w') as f:
-            f.write(answer)
-            logging.info(f"Answer has been saved to {output_path}")
+        try:
+            doc_name = os.path.basename(doc_path)
+            summary_name = doc_name + '.md'
+            summary_dir = os.path.join(self.user_doc_dir, category)
+            if not os.path.exists(summary_dir):
+                os.makedirs(summary_dir)
+            summary_path = os.path.join(summary_dir, summary_name)
+            return summary_path
+        except Exception as e:
+            logging.error(f"Error when get summary path: {doc_path}, {e}")
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-
     logging.info('Test for Doc Professor')
     docc = DocProfessor(user_dir='user_data/lintao/', model='gpt-4o-2024-05-13')
     logging.info('Load the categories map')
     docc.load_categories_map()
     logging.info('Read the document')
     doc_path = 'user_data/lintao/data/研究论文/Carisimo 等 - 2023 - A Hop Away from Everywhere A View of the Intercon.pdf'
-    doc_content = get_doc_content(doc_path)
-
-    logging.info('Classify the document')
-    classify_result = docc.classify_doc(doc_content[:1000])
-    logging.info('Get the category and keywords')
-    category, keywords = docc.get_category_and_keywords(classify_result)
-    logging.info(f'Category: {category}, Keywords: {keywords}')
-
-    for keyword in keywords:
-        if keyword not in docc.get_candidate_keyword():
-            logging.info('Add keywords if not exist')
-            docc.add_candidate_keyword(keyword)
-
-    logging.info('Get the new document path based on category')
-    new_doc_path = docc.get_new_doc_path_based_on_category(doc_path, category[0])
-    logging.info('Move the document')
-    docc.move_doc(doc_path, new_doc_path)
-    logging.info('Get the summary path based on category')
-    summary_path = docc.get_summary_path_based_on_category(doc_path, category[0])
-    logging.info('Summarize the document')
-    summary = docc.summarize_doc(doc_content)
-    logging.info('Dump the content to file')
-    docc.dump_content_to_file(summary, summary_path)
-    logging.info('Done')
+    docc.documents_to_be_resolved[doc_path] = 0
+    logging.info('Resolve the document')
+    documents_status = docc.resolve_docs()
+    logging.info(f"Documents status: {documents_status}")
