@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+        .file-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .file-list li {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .chat-box {
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .chat-input {
+            width: calc(100% - 100px);
+            padding: 10px;
+            margin-right: 10px;
+        }
+        .chat-submit {
+            padding: 10px 20px;
+        }
+        .nav-bar {
+            background-color: #f0f0f0;
+            padding: 10px;
+            text-align: right;
+        }
+        .nav-bar a {
+            margin-left: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-bar">
+        <a id="upload-page-link">Upload Files</a>
+        <a id="chat-page-link">Chat</a>
+    </div>
+
+    <div class="container">
+        <!-- File Upload Page -->
+        <div id="upload-page" class="page active">
+            <h2>Upload Files</h2>
+            <input type="file" id="file-input" multiple>
+            <button id="upload-button">Upload</button>
+            <ul id="file-list" class="file-list"></ul>
+            <button id="resolve-button">Resolve Files</button>
+        </div>
+
+        <!-- Chat Page -->
+        <div id="chat-page" class="page">
+            <h2>Ask a Question</h2>
+            <div id="chat-box" class="chat-box"></div>
+            <input type="text" id="chat-input" class="chat-input" placeholder="Type your question...">
+            <button id="chat-submit" class="chat-submit">Submit</button>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('upload-page-link').onclick = function() {
+            document.getElementById('upload-page').classList.add('active');
+            document.getElementById('chat-page').classList.remove('active');
+        };
+
+        document.getElementById('chat-page-link').onclick = function() {
+            document.getElementById('chat-page').classList.add('active');
+            document.getElementById('upload-page').classList.remove('active');
+        };
+
+        document.getElementById('upload-button').onclick = function() {
+            let files = document.getElementById('file-input').files;
+            let formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files[]', files[i]);
+            }
+
+            fetch('/upload_files', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+              .then(data => {
+                  let fileList = document.getElementById('file-list');
+                  fileList.innerHTML = '';
+                  data.uploaded_files.forEach(file => {
+                      let li = document.createElement('li');
+                      li.textContent = file;
+                      fileList.appendChild(li);
+                  });
+              });
+        };
+
+        document.getElementById('resolve-button').onclick = function() {
+            fetch('/resolve_files', {
+                method: 'POST'
+            }).then(response => response.json())
+              .then(data => {
+                  alert('Files resolved: ' + JSON.stringify(data));
+              });
+        };
+
+        document.getElementById('chat-submit').onclick = function() {
+            let chatBox = document.getElementById('chat-box');
+            let inputText = document.getElementById('chat-input').value;
+            if (inputText.trim() === '') return;
+
+            chatBox.innerHTML += '<p><strong>You:</strong> ' + inputText + '</p>';
+
+            fetch('/answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ input_text: inputText })
+            }).then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                return reader.read().then(function processText({ done, value }) {
+                    if (done) return;
+                    let chunk = decoder.decode(value, { stream: true });
+                    let data = JSON.parse(chunk.substring(6));
+                    if (data.title) {
+                        chatBox.innerHTML += '<p><strong>Title:</strong> ' + data.title + '</p>';
+                    }
+                    if (data.answer_chunk) {
+                        chatBox.innerHTML += '<p><strong>Assistant:</strong> ' + data.answer_chunk + '</p>';
+                    }
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                    return reader.read().then(processText);
+                });
+            });
+        };
+    </script>
+</body>
+</html>
