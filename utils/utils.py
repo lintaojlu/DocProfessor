@@ -1,9 +1,24 @@
 # Author: Lintao
+import logging
 import os
 import PyPDF2
 
 
-def get_files_in_directory(directory_path):
+def move_doc(doc_path, new_doc_path):
+    logging.debug(f"Move document from {doc_path} to {new_doc_path}")
+    os.rename(doc_path, new_doc_path)
+    logging.info(f"Document has been moved to {new_doc_path}")
+
+
+def dump_content_to_file(content, output_path):
+    logging.debug(f"Dump content to {output_path}")
+    # Save Chinese
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+        logging.info(f"Content has been saved to {output_path}")
+
+
+def get_files_in_directory(directory_path, suffix=None):
     """
     获取指定目录下所有文件的路径。
 w
@@ -19,7 +34,11 @@ w
         # 遍历文件夹中的所有文件
         for root, _, files in os.walk(directory_path):
             for file in files:
-                files_list.append(os.path.join(root, file))
+                if suffix:
+                    if file.endswith(suffix):
+                        files_list.append(os.path.join(root, file))
+                else:
+                    files_list.append(os.path.join(root, file))
     else:
         raise ValueError("路径无效：不是文件或文件夹")
 
