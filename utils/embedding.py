@@ -12,7 +12,8 @@ from typing import Any, Dict, List
 from pathlib import Path
 
 MODEL_BASE_PATH = Path(__file__).resolve().parents[1] / 'user_data' / 'lintao' / "models"
-CONFIG_DICT = json.load(open(MODEL_BASE_PATH / 'config' / "llm_config.json", "r"))
+CONFIG_PATH = Path(__file__).resolve().parents[1] / 'user_data' / 'lintao' / "config"
+CONFIG_DICT = json.load(open(CONFIG_PATH / "llm_config.json", "r"))
 HF_TOKEN = CONFIG_DICT.get('HUGGINGFACE_CONFIG', {}).get('HF_TOKEN', None)
 HF_EMBEDDING_MULTIMINILM = {
     # https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
