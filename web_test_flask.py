@@ -117,5 +117,104 @@ def update_category():
     return jsonify({"message": "Category updated successfully"})
 
 
+@app.route('/view_file_details', methods=['GET'])
+def view_file_details():
+    # 功能: 查看文档解析细节
+    # 参数: 文件名或ID
+    pass
+
+
+@app.route('/delete_file', methods=['POST'])
+def delete_file():
+    # 功能: 删除文档
+    # 参数: 文件名或ID
+    pass
+
+
+@app.route('/edit_tag', methods=['POST'])
+def edit_tag():
+    # 功能: 编辑标签内容
+    # 参数: 文件名或ID, 标签内容
+    pass
+
+
+@app.route('/get_page_content', methods=['GET'])
+def get_page_content():
+    # 功能: 访问相应页内容
+    # 参数: 页码, 每页项目数量
+    pass
+
+@app.route('/get_documents_by_category', methods=['GET'])
+def get_documents_by_category():
+    # 功能: 查看某分类下的全部文档
+    # 参数: 分类ID或名称
+    pass
+
+
+@app.route('/get_subcategories', methods=['GET'])
+def get_subcategories():
+    # 功能: 查看一级分类下的二级分类文件夹
+    # 参数: 一级分类ID或名称
+    pass
+
+
+@app.route('/document_management', methods=['GET'])
+def document_management():
+    # 功能: 进入文档管理界面
+    pass
+
+
+@app.route('/knowledge_base_qa', methods=['GET'])
+def knowledge_base_qa():
+    # 功能: 进入知识库问答功能界面
+    pass
+
+
+@app.route('/knowledge_graph', methods=['GET'])
+def knowledge_graph():
+    # 功能: 进入知识图谱功能界面
+    pass
+
+
+@app.route('/view_conversation/<conversation_id>', methods=['GET'])
+def view_conversation(conversation_id):
+    # 功能: 查看历史问答的某个对话
+    # 参数: conversation_id (会话ID)
+    pass
+
+
+@app.route('/create_conversation', methods=['POST'])
+def create_conversation():
+    # 功能: 新建会话
+    pass
+
+
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    # 功能: 发送对话
+    # 参数: 输入的对话内容
+    pass
+
+
+@app.route('/view_related_document/<message_id>', methods=['GET'])
+def view_related_document(message_id):
+    # 功能: 查看与回答相关联的文档
+    # 参数: message_id (消息ID)
+    pass
+
+
+@app.route('/highlight_related_articles', methods=['POST'])
+def highlight_related_articles():
+    # 功能: 知识图谱中高亮显示与某圆圈直接关联的文章
+    # 参数: 节点ID或文章ID
+    pass
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    # 功能: 用户登录
+    pass
+
+
 if __name__ == '__main__':
     app.run(debug=True)
