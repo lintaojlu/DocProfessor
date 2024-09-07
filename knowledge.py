@@ -1,7 +1,7 @@
 # Author: Lintao
 import os
 
-from utils.database import KnowledgeDB
+from utils.knowledge_db import KnowledgeDB
 from utils.embedding import LocalEmbedding
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity

@@ -1,55 +1,43 @@
-# Author: Lintao
-import pickledb
-import os
 import logging
 
+import pandas as pd
 
-class KnowledgeDB:
-    _instances = {}
 
-    def __new__(cls, db_path, auto_dump=True):
-        if db_path not in cls._instances:
-            instance = super(KnowledgeDB, cls).__new__(cls)
-            instance.__init__(db_path, auto_dump)
-            cls._instances[db_path] = instance
-        return cls._instances[db_path]
-
-    def __init__(self, db_path, auto_dump=True):
-        self.logger = logging.getLogger("DATABASE")
-        self.db_path = db_path
-        self.auto_dump = auto_dump
-        if not hasattr(self, 'db'):
-            self.db = self.load_db()
+class MyDatabase:
+    def __init__(self, user_dir):
+        self.user_dir = user_dir
+        self.db_df = None
+        self.load_db()
 
     def load_db(self):
-        if os.path.exists(self.db_path):
-            self.logger.info(f"使用已有数据库：{self.db_path}")
+        if self.db_df is None:
+            # 创建数据库
+            self.db_df = pd.DataFrame(
+                columns=['doc_name', 'category', 'keywords', 'doc_path', 'summary_path', 'info_path'])
+            self.db_df.to_csv(self.user_dir + '/database/database.csv', index=False)
+            logging.info(f'Created database at {self.user_dir}/database/database.csv')
         else:
-            self.logger.info(f"不存在数据库：{self.db_path}，创建新数据库")
-        result = pickledb.load(self.db_path, self.auto_dump, sig=False)
-        self.logger.info(f"数据库已加载：{self.db_path}")
-        return result
+            self.db_df = pd.read_csv(self.user_dir + '/database/database.csv')
+            logging.info(f'Loaded database from {self.user_dir}/database/database.csv')
 
-    def get(self, key):
-        return self.db.get(key)
+    def update_doc_info(self, doc_name, category, keywords, doc_path, summary_path, info_path):
+        # Update the database with the doc info
+        new_row = pd.DataFrame([[doc_name, category, keywords, doc_path, summary_path, info_path]],
+                               columns=['doc_name', 'category', 'keywords', 'doc_path', 'summary_path', 'info_path'])
+        self.db_df = pd.concat([self.db_df, new_row], ignore_index=True)
+        self.db_df.to_csv(self.user_dir + '/database/database.csv', index=False)
+        logging.info(f'Updated database with doc {doc_name}')
 
-    def set(self, key, value):
-        return self.db.set(key, value)
+    def get_info_path(self, file_name):
+        # Get the info path of the file
+        return self.db_df[self.db_df['doc_name'] == file_name]['info_path'].values[0]
 
-    def delete(self, key):
-        try:
-            result: bool = self.db.rem(key)
-        except KeyError:
-            return False
-        self.logger.debug(f"键{key}已删除")
-        return result
+    def get_summary_path(self, file_name):
+        # Get the summary path of the file
+        return self.db_df[self.db_df['doc_name'] == file_name]['summary_path'].values[0]
 
-    def dump(self):
-        result = self.db.dump()
-        self.logger.debug(f"database {self.db_path} 已持久化到{self.db_path}")
-        return result
-
-    def clear(self):
-        result = self.db.deldb()
-        self.logger.debug(f"database {self.db_path} 已清空")
-        return result
+    def delete_doc_info(self, file_name):
+        # Delete the doc info from the database
+        self.db_df = self.db_df[self.db_df['doc_name'] != file_name]
+        self.db_df.to_csv(self.user_dir + '/database/database.csv', index=False)
+        logging.info(f'Deleted doc {file_name} from the database')
