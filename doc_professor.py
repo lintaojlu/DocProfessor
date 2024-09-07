@@ -7,6 +7,7 @@ from doc_chat import DocAssistant
 from doc_study import DocStudy
 from utils.llm_api import get_model_answer
 from utils.utils import get_doc_content, get_files_in_directory, move_doc, dump_content_to_file
+from utils.database import MyDatabase
 from doc_resolver import DocResolver
 
 
@@ -18,15 +19,15 @@ class DocProfessor:
         self.user_temp_dir = self.user_dir + 'temp/'
         self.categories_map_path = self.user_dir + 'config/category_map.json'
         self.categories_map = None
-        self.documents_local = []
         # e.g. {'doc_path': 'status'}
         self.documents_to_be_resolved = {}
+        self.my_db = None
         logging.info(f'DOC_CLASSIFIER use model:{self.model}')
 
         # initialize
         os.makedirs(self.user_doc_dir, exist_ok=True)
         os.makedirs(self.user_temp_dir, exist_ok=True)
-        self.documents_local = self.get_all_document_paths()
+        self.my_db = MyDatabase(user_dir=self.user_dir)
         # the main modules
         self.resolver = DocResolver(user_dir=self.user_dir, model=self.model)
         self.learner = DocStudy(tokenizer_dir=self.user_dir + 'models/nltk_data',
@@ -35,10 +36,6 @@ class DocProfessor:
         self.knowledge_retrieval = self.learner.knowledge_retrieval
         self.assistant = DocAssistant(model=self.model, user_dir=self.user_dir,
                                       knowledge_retrieval=self.knowledge_retrieval)
-
-    def get_all_document_paths(self):
-        self.documents_local = get_files_in_directory(self.user_doc_dir)
-        return self.documents_local
 
     def load_categories_map(self):
         with open(self.categories_map_path, 'r') as f:
@@ -169,10 +166,30 @@ class DocProfessor:
 
             # 文档解析完毕
             self.documents_to_be_resolved[doc_path] = 1
+
+            # 更新文档的相关信息到数据库
+            doc_name = os.path.basename(doc_path)
+            self.my_db.update_doc_info(doc_name, categories[0], keywords, new_doc_path, summary_path, new_doc_info_path)
         logging.info("Finish resolve all documents")
         return self.documents_to_be_resolved
 
+    def get_resolve_result(self, file_name):
+        try:
+            doc_info_path = self.my_db.get_info_path(file_name)
+            with open(doc_info_path, 'r') as f:
+                doc_info = json.load(f)
+            return doc_info
+        except Exception as e:
+            logging.error(f"Error when get resolve result: {file_name}, {e}")
 
+    def get_summary(self, file_name):
+        try:
+            summary_path = self.my_db.get_summary_path(file_name)
+            with open(summary_path, 'r') as f:
+                summary = f.read()
+            return summary
+        except Exception as e:
+            logging.error(f"Error when get summary: {file_name}, {e}")
 
     def get_new_doc_path_based_on_category(self, doc_path, category):
         try:
@@ -208,6 +225,31 @@ class DocProfessor:
             return summary_path
         except Exception as e:
             logging.error(f"Error when get summary path: {doc_path}, {e}")
+
+    def delete_file(self, file_name):
+        try:
+            doc_path = self.my_db.get_info_path(file_name)
+            os.remove(doc_path)
+            summary_path = self.my_db.get_summary_path(file_name)
+            os.remove(summary_path)
+            self.my_db.delete_doc_info(file_name)
+        except Exception as e:
+            logging.error(f"Error when delete file: {file_name}, {e}")
+
+    def get_all_docs(self):
+        try:
+            # format: [{'doc_name': '', 'category': '', 'keywords': '', 'doc_path': '', 'summary_path': '', 'info_path': ''}]
+            doc_table = self.my_db.db_df.to_dict(orient='records')
+            return doc_table
+        except Exception as e:
+            logging.error(f"Error when get all docs: {e}")
+
+    def get_docs_by_category(self, category):
+        try:
+            doc_table = self.my_db.db_df[self.my_db.db_df['category'] == category].to_dict(orient='records')
+            return doc_table
+        except Exception as e:
+            logging.error(f"Error when get docs by category: {category}, {e}")
 
 
 if __name__ == "__main__":
